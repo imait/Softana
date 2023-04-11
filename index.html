@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Softana: simple database for download software</title>
+<script src="./lib/encoding.js"></script>
+<script src="./lib/csv.js"></script>
+<script>
+var indexedDB = window.indexedDB;
+var IDBTransaction = window.IDBTransaction;
+var IDBKeyRange = window.IDBKeyRange;
+var IDBCursor = window.IDBCursor;
+
+const STORE_MENU_LABEL = '店舗名';
+
+const DB_NAME = 'MySofts';
+const DB_STORE_NAME = 'games';
+var db;
+
+//indexedDB.deleteDatabase(DB_NAME);
+var request = indexedDB.open(DB_NAME, 1);
+
+request.onupgradeneeded = function() {
+    db = this.result;
+    var store = db.createObjectStore(DB_STORE_NAME, {keyPath: 'id', 
+						     autoIncrement: true});
+    var titleindex = store.createIndex('by_title', 'title');
+    var publisherindex = store.createIndex('by_publisher', 'publisher');
+    var storeindex = store.createIndex('by_store', 'store');
+    var dateindex = store.createIndex('by_purchase_date', 'purchase_date');
+};
+
+request.onsuccess = function() {
+    db = this.result;
+};
+
+
+function showtable___(event) {
+    // for sort by select value
+    var qtitle = document.getElementById('QUERY_TITLE').value;
+
+    var sort_index = document.getElementById('SORT_INDEX').value;
+    var sort_direction = document.getElementById('SORT_DIRECTION').value;
+
+    var tx = db.transaction(DB_STORE_NAME, 'readonly');
+    var store = tx.objectStore(DB_STORE_NAME);
+    var index = store.index(sort_index);
+
+    var rt = new resultTable();
+    index.openCursor(null, sort_direction).onsuccess = function() {
+	var cursor = this.result;
+	if (cursor) {
+	    rt.addRow(cursor.value);
+	    cursor.continue();
+	}
+    }
+    rt.replaceTable();
+}
+
+function showtable__(event) {
+    // for sort by title
+    var qtitle = document.getElementById('QUERY_TITLE').value;
+
+    var tx = db.transaction(DB_STORE_NAME, 'readonly');
+    var store = tx.objectStore(DB_STORE_NAME);
+    var index = store.index('by_title');
+
+    var rt = new resultTable();
+    index.openCursor().onsuccess = function() {
+	var cursor = this.result;
+	if (cursor) {
+	    rt.addRow(cursor.value);
+	    cursor.continue();
+	}
+    }
+    rt.replaceTable();
+}
+
+function showtable(event) {
+    var qtitle = document.getElementById('QUERY_TITLE').value;
+
+    var tx = db.transaction(DB_STORE_NAME, 'readonly');
+    var store = tx.objectStore(DB_STORE_NAME);
+
+    var rt = new resultTable();
+    store.openCursor(null, 'prev').onsuccess = function() {
+	var cursor = this.result;
+	if (cursor) {
+	    rt.addRow(cursor.value);
+	    cursor.continue();
+	}
+    }
+    rt.replaceTable();
+}
+
+function showsinglerecord(key) {
+    key = Number(key);
+    var tx = db.transaction(DB_STORE_NAME, 'readonly');
+    var store = tx.objectStore(DB_STORE_NAME);
+    var request = store.get(key);
+
+    var rt = new resultTable();
+
+    request.onsuccess = function() {
+	var maching = this.result;
+	if (maching) {
+	    rt.addRow(maching);
+	}
+    }
+    rt.replaceTable();
+}
+
+
+function searchtable(event) {
+    var qtitle = document.getElementById('QUERY_TITLE').value;
+    var qpublisher = document.getElementById('QUERY_PUBLISHER').value;
+    var qstore = document.getElementById('QUERY_STORE').value;
+    var qpurchase_date = document.getElementById('QUERY_PURCHASE_DATE').value;
+
+    var rt = new resultTable();
+
+    var sort_index = document.getElementById('SORT_INDEX').value;
+    var sort_direction = document.getElementById('SORT_DIRECTION').value;
+
+    var tx = db.transaction(DB_STORE_NAME, 'readonly');
+    var store = tx.objectStore(DB_STORE_NAME);
+    var index = store.index(sort_index);
+    var request = index.openCursor(null, sort_direction);
+
+    request.onsuccess = function() {
+	var cursor = this.result;
+	if (cursor) {
+	    var value = cursor.value;
+	    if (value.title.indexOf(qtitle) != -1 &&
+		value.publisher.indexOf(qpublisher) != -1 &&
+		value.store.indexOf(qstore) != -1 &&
+		value.purchase_date.indexOf(qpurchase_date) != -1
+	       ) {
+		rt.addRow(cursor.value);
+	    }
+	    cursor.continue();
+	}
+    }
+    rt.replaceTable();
+}
+
+
+function searchtable_fullword(event) {
+    var qtitle = document.getElementById('QUERY_TITLE').value;
+
+    var tx = db.transaction(DB_STORE_NAME, 'readonly');
+    var store = tx.objectStore(DB_STORE_NAME);
+    var index = store.index('by_title');
+
+    var request = index.get(qtitle);
+
+    var rt = new resultTable();
+    request.onsuccess = function() {
+	var matching = this.result;
+	if (matching !== undefined) {
+	    rt.addRow(matching);
+	    cursor.continue();
+	}
+    }
+    rt.replaceTable();
+}
+
+
+// add record
+function addrecord(event) {
+    var title = document.getElementById('TITLE');
+    var publisher  = document.getElementById('PUBLISHER');
+    var store_name = document.getElementById('STORE');
+    var purchase_date = document.getElementById('PURCHASE_DATE');
+
+    if (title.value) {
+	var tx = db.transaction(DB_STORE_NAME, 'readwrite');
+	var store = tx.objectStore(DB_STORE_NAME);
+	store.add({title: title.value.trim(),
+		   publisher: publisher.value.trim(),
+		   store: store_name.value.trim(),
+		   purchase_date: purchase_date.value.trim()});
+	title.value = '';
+	publisher.value = '';
+	store_name.value = '';
+	purchase_date.value = '';
+	showtable();
+    }
+}
+
+function fillmenu() {
+    // for sort by store
+    //var qtitle = document.getElementById('QUERY_TITLE').value;
+
+    var tx = db.transaction(DB_STORE_NAME, 'readonly');
+    var store = tx.objectStore(DB_STORE_NAME);
+    var index = store.index('by_store');
+
+    var menu = document.getElementById('STORE_MENU');
+    while (menu.firstChild) {
+	menu.removeChild(menu.firstChild);
+    }
+    var textnode = document.createTextNode(STORE_MENU_LABEL);
+    var option = document.createElement('option');
+    option.appendChild(textnode);
+    menu.appendChild(option);
+
+    index.openCursor(null, 'nextunique').onsuccess = function(event) {
+	var cursor = event.target.result;
+	if (cursor) {
+	    var textnode = document.createTextNode(cursor.value.store);
+	    var option = document.createElement('option');
+	    option.appendChild(textnode);
+	    menu.appendChild(option);
+	    cursor.continue();
+	}
+    }
+}
+
+// for popup menu
+function setstorename() {
+    var DB_STORE_NAME = document.getElementById('STORE_MENU').value;
+    var store = document.getElementById('STORE');
+    if (DB_STORE_NAME != STORE_MENU_LABEL) {
+	store.value = DB_STORE_NAME;
+    }
+}
+
+request.onerror = function (event) {
+    console.log('error: ' + event.target.errorCode);
+}
+
+
+// update record
+function updaterecord(event) {
+    //this function is a test to get with primary key
+    var key = Number(document.getElementById('ID').value);
+
+    var tx = db.transaction(DB_STORE_NAME, 'readwrite');
+    var store = tx.objectStore(DB_STORE_NAME);
+    var request = store.get(key);
+    request.onsuccess = function() {
+	var matching = this.result;
+	if (matching) {
+	    var title = document.getElementById('TITLE');
+	    var publisher  = document.getElementById('PUBLISHER');
+	    var store_name = document.getElementById('STORE');
+	    var purchase_date = document.getElementById('PURCHASE_DATE');
+	    if (title.value) {
+		matching.title = title.value.trim();
+		matching.publisher = publisher.value.trim();
+		matching.store = store_name.value.trim();
+		matching.purchase_date = purchase_date.value.trim();
+
+		var requestUpdate = store.put(matching);
+		requestUpdate.onerror = function() {
+
+		}
+		requestUpdate.onsuccess = function() {
+		    //showtable();
+		    showsinglerecord(key);
+		}
+	    }
+	} else {
+	    alert('no id');
+	}
+    }
+}
+
+function fillfields_to_update(key) {
+    var key = Number(key);
+
+    var tx = db.transaction(DB_STORE_NAME, 'readonly');
+    var store = tx.objectStore(DB_STORE_NAME);
+    var request = store.get(key);
+    request.onsuccess = function() {
+	var matching = this.result;
+	if (matching) {
+	    var id = document.getElementById('ID');
+	    var title = document.getElementById('TITLE');
+	    var publisher  = document.getElementById('PUBLISHER');
+	    var store_name = document.getElementById('STORE');
+	    var purchase_date = document.getElementById('PURCHASE_DATE');
+	    id.value = matching.id;
+	    title.value = matching.title;
+	    publisher.value = matching.publisher;
+	    store_name.value = matching.store;
+	    purchase_date.value = matching.purchase_date;
+
+	    var addbtn = document.getElementById('ADD');
+	    addbtn.setAttribute('disabled', 'disabled');
+	    var updatebtn = document.getElementById('UPDATE');
+	    updatebtn.removeAttribute('disabled');
+	    var updatecancelbtn = document.getElementById('UPDATE_CANCEL');
+	    updatecancelbtn.removeAttribute('disabled');
+	    var deletebtn = document.getElementById('DELETE');
+	    deletebtn.removeAttribute('disabled');
+
+	    setformhedding('更新');
+
+	    var openswitch = document.getElementById('OPEN_SWITCH');
+	    openswitch.checked = true;
+	    window.scrollTo(0, 0);
+	} else {
+	    alert('no id');
+	}
+    }
+}
+
+function cancelupdate() {
+    var id = document.getElementById('ID');
+    var title = document.getElementById('TITLE');
+    var publisher  = document.getElementById('PUBLISHER');
+    var store_name = document.getElementById('STORE');
+    var purchase_date = document.getElementById('PURCHASE_DATE');
+    id.value = '';
+    title.value = '';
+    publisher.value = '';
+    store_name.value = '';
+    purchase_date.value = '';
+
+    var addbtn = document.getElementById('ADD');
+    addbtn.removeAttribute('disabled');
+    var updatebtn = document.getElementById('UPDATE');
+    updatebtn.setAttribute('disabled', 'disabled');
+    var updatecancelbtn = document.getElementById('UPDATE_CANCEL');
+    updatecancelbtn.setAttribute('disabled', 'disabled');
+    var deletebtn = document.getElementById('DELETE');
+    deletebtn.setAttribute('disabled', 'disabled');
+
+    setformhedding('追加');
+}
+
+function setformhedding(text) {
+    var target = document.getElementById('FORM_HEADING');
+    var tn = document.createTextNode(text.trim());
+    while (target.firstChild) {
+	target.removeChild(target.firstChild);
+    }
+
+    target.appendChild(tn);
+}
+
+// delete record
+function deleterecord() {
+    var key = Number(document.getElementById('ID').value);
+
+    var tx = db.transaction(DB_STORE_NAME, 'readwrite');
+    var store = tx.objectStore(DB_STORE_NAME);
+    var request = store.delete(key);
+    request.onsuccess = function() {
+	cancelupdate();
+	showtable();
+    }
+
+    request.onerror = function() {
+	alert('could not delete');
+    }
+}
+
+// File upload
+
+function fileopen(event) {
+    event.stopPropagation();
+    event.preventDefault();
+
+    if (this.files) {
+	var file = this.files[0];
+    } else {
+	var file = event.dataTransfer.files[0];
+    }
+
+    var type;
+    var answer = false;
+    if (file.name.indexOf('.csv') !== -1 || file.name.indexOf('.CSV') !== -1 ||
+	file.name.indexOf('.txt') !== -1 || file.name.indexOf('.TXT') !== -1) {
+	answer = confirm(file.name + 
+			 'をCSV (カンマ区切りテキスト)として読み込み、データを追加します。');
+	type = 'csv';
+    } else if (file.name.indexOf('.json') !== -1 || 
+	       file.name.indexOf('.JSON') !== -1) {
+	answer = confirm(file.name + 
+			 'をJSONファイルとして読み込み、全データを置き換えます。');
+	type = 'json';
+    }
+
+    if (!answer) {
+	return;
+    }
+
+    var reader = new FileReader();
+    reader.readAsArrayBuffer(file);
+    reader.onprogress = function(event) {};
+    reader.onload = function(event) {
+	var codes = new Uint8Array(this.result);
+	var encoding = Encoding.detect(codes);
+	var unicodestring = Encoding.convert(codes, {to: 'unicode',
+						     from: encoding,
+						     type: 'string'});
+	switch (type) {
+	case 'csv':
+	    var tx = db.transaction(DB_STORE_NAME, 'readwrite');
+	    var store = tx.objectStore(DB_STORE_NAME);
+
+	    CSV.RELAXED = true;
+	    csvcontent = CSV.parse(unicodestring)
+
+	    for (var i = 0; i < csvcontent.length; i++) {
+		if (csvcontent[i] && csvcontent[i][0]) {
+		    store.add({title: csvcontent[i][0].trim(),
+			       publisher: csvcontent[i][1].trim(),
+			       store: csvcontent[i][2].trim(),
+			       purchase_date: csvcontent[i][3].trim()});
+		}
+	    }
+
+	    tx.oncomplete = function(event) {
+		showtable();
+	    };
+
+	    break;
+	case 'json':
+	    var tx = db.transaction(DB_STORE_NAME, 'readwrite');
+	    var store = tx.objectStore(DB_STORE_NAME);
+
+	    var request = store.clear();
+
+	    request.onsuccess = function(event) {
+		jsoncontent = JSON.parse(unicodestring);
+
+		for (var i = 0; i < jsoncontent.length; i++) {
+		    if (jsoncontent[i]) {
+			store.add({id: jsoncontent[i]['id'],
+				   title: jsoncontent[i]['title'].trim(),
+				   publisher: jsoncontent[i]['publisher'].trim(),
+				   store: jsoncontent[i]['store'].trim(),
+				   purchase_date: jsoncontent[i]['purchase_date'].trim()});
+		    }
+		}
+	    }
+
+	    tx.oncomplete = function(event) {
+		showtable();
+	    };
+
+	    break;
+	}	
+    };
+    reader.enerror = function(event) {};
+}
+
+function dragover(event) {
+    event.stopPropagation();
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+}
+
+// download json
+
+function downloadjson() {
+    var tx = db.transaction(DB_STORE_NAME, 'readonly');
+    var store = tx.objectStore(DB_STORE_NAME);
+
+    var result = new Array();
+
+    var request = store.openCursor(null, 'next');
+    request.onsuccess = function() {
+	var cursor = this.result;
+	if (cursor) {
+	    result.push(cursor.value);
+	    cursor.continue();
+	}
+    }
+    tx.oncomplete = function() {
+	json = JSON.stringify(result);
+	var blob = new Blob([json], {'type': 'application/json'});
+
+	if (!confirm(json)) {
+	    return;
+	};
+
+	var filename = 'dbdata.json';
+	if (window.navigator.msSaveBlob) { 
+
+            window.navigator.msSaveOrOpenBlob(blob, filename); 
+
+        } else if (window.URL.createObjectURL) {
+            var url = window.URL.createObjectURL(blob);
+	    var a = document.createElement('a');
+	    a.appendChild(document.createTextNode('download JSON file'));
+	    document.getElementById('DOWNLOAD').appendChild(a);
+	    a.setAttribute('download', filename);
+	    a.setAttribute('href', url);
+	    a.setAttribute('onclick', 'document.getElementById("DOWNLOAD").removeChild(document.getElementById("DOWNLOAD").firstChild);');
+	    a.click();
+	    window.URL.revokeObjectURL(url);
+        }
+    }
+}
+
+// class resultTable()
+
+function addRow(values) {
+    var row = document.createElement('tr');
+    row.setAttribute('onclick', 'fillfields_to_update(' + values.id+ ')');
+    this.tbody.appendChild(row);
+    var addTd = function(value) {
+	var td = document.createElement('td');
+	var textnode = document.createTextNode(value);
+	td.appendChild(textnode);
+	row.appendChild(td);
+    }
+    //addTd(values.id); //
+    addTd(values.title);
+    addTd(values.publisher);
+    addTd(values.store);
+    addTd(values.purchase_date);
+}
+
+function replaceTable() {
+    if (this.result.childNodes.length) {
+	this.result.replaceChild(this.table, this.result.childNodes[0]);
+    } else {
+	this.result.appendChild(this.table);
+    }
+}
+
+function resultTable() {
+    this.result = document.getElementById('RESULT');
+    this.table = document.createElement('table');
+    this.thead = document.createElement('thead');
+    this.table.appendChild(this.thead);
+    //this.LABEL = ['ID', 'タイトル', 'メーカー', '購入店舗', '購入日'];
+    this.LABEL = ['タイトル', 'メーカー', '購入店舗', '購入日'];
+    for (var i = 0; i < this.LABEL.length; i++) {
+	var th = document.createElement('th');
+	var textnode = document.createTextNode(this.LABEL[i]);
+	th.appendChild(textnode);
+	this.thead.appendChild(th);
+    }
+    this.tbody = document.createElement('tbody');
+    this.table.appendChild(this.tbody);
+}
+
+new resultTable;
+resultTable.prototype.replaceTable = replaceTable;
+resultTable.prototype.addRow = addRow;
+
+function deleteDB(event) {
+    db.close()
+    indexedDB.deleteDatabase(DB_NAME);
+    window.alert('Database was deleted.');
+}
+</script>
+
+<style>
+body {background: #fcfcfc; color: 030303; padding: 0; margin: 0;}
+table {border-collapse: collapse; margin: 4px;}
+tr:hover {background: lightcyan;}
+thead {background: dimgray; color: #fcfcfc;}
+tbody tr {border: solid darkgray; border-width: 0 0 1px 0; }
+th:first-child {border-radius: 8px 0 0 8px;}
+th:last-child {border-radius: 0 8px 8px 0;}
+th {padding: 6px 4px 6px 2px; text-align: left;}
+td {padding: 16px 4px 4px 2px;}
+
+label {display: block; /*border: solid gray; border-width: 0 0 1px;*/ margin: 0; background: #555; text-align: center; font-family: sans-serif; color: #999; transform: rotate(180deg)}
+input[type="checkbox"].openswitch {display: none;}
+
+div#PANEL {transition: all 0.2s; margin: 0; padding: 0; background: lightgray;}
+
+input[type="checkbox"].openswitch + div {height: 0; overflow: hidden;}
+input[type="checkbox"].openswitch:checked + div {height: 12em; border: solid gray; border-width: 0 0 1px;}
+
+div#INPUT_FORM {width: 60%; float: left;}
+div#INPUT_FORM h2 {font-size: 100%; margin: 0.5em 0 0;}
+div#INPUT_FORM dl {margin: 0.2em 0;}
+div#INPUT_FORM dt {width: 5em; float: left; /*clear: both;*/}
+div#INPUT_FORM dd {margin-left: 5em; /*float: left;*/}
+div#INPUT_FORM p {margin: 0.2em 0 0.2em 5em;}
+div#INPUT_FORM dd input {width: 12em;}
+div#INPUT_FORM dd input#TITLE {width: calc(100% - 5em);}
+input#DELETE {float: right; margin-right: 5em;}
+
+div#FILE_SWITCHS h2 {font-size: 100%; margin: 0.5em 0 0; }
+div#FILE_SWITCHS p {margin: 0.2em 0;}
+
+div#DELETE_PANEL {width: 40%; float: right;}
+div#DELETE_PANEL h2 {font-size: 100%; margin: 0.5em 0 0;}
+div#DELETE_PANEL p {margin: 0.2em 0;}
+
+div#SEARCH_PANEL {margin: 0 0 2em;}
+div#SEARCH_PANEL dl {margin: 0.2em;}
+div#SEARCH_PANEL dl dt {width: 3em; float: left;}
+div#SEARCH_PANEL dl dd {}
+
+div#SEARCH_PANEL p {margin: 0.2em 0 0 3em;}
+
+</style>
+
+</head>
+<body>
+<input type="checkbox" id="OPEN_SWITCH" class="openswitch" />
+
+<div id="PANEL">
+<div id="INPUT_FORM">
+<h2 id="FORM_HEADING">追加</h2>
+<input type="hidden" id="ID" value="" />
+<dl>
+<dt>タイトル:</dt><dd><input type="text" id="TITLE" /></dd>
+<dt>メーカー:</dt><dd><input type="text" id="PUBLISHER" /></dd>
+<dt>購入店舗:</dt><dd><input type="text" id="STORE" /> <select id="STORE_MENU"><option>店舗名</option></select></dd>
+<dt>購入日:</dt><dd><input type="date" id="PURCHASE_DATE" /></dd>
+</dl>
+
+<p><input type="button" id="ADD" value="add" /> <input type="button" id="UPDATE" value="update" disabled="disabled" /> <input type="button" id="UPDATE_CANCEL" value="cancel" disabled="disabled" /> 
+<input type="button" id="DELETE" value="delete" disabled="disabled" /></p>
+</div>
+
+<div id="FILE_SWITCHS">
+<h2>CSV/JSON 読み込み</h2>
+<p><input type="file" id="FILE" accept=".json,.csv,.txt," /></p>
+<h2>JSON 書き出し</h2>
+<p><input type="button" id="DLBTN" value="download json" onclick="downloadjson()" /> <span id="DOWNLOAD"></span></p>
+</div>
+
+<div id="DELETE_PANEL">
+<h2>データベース削除</h2>
+<p><input type="button" id="deldb" value="delete DB" /></p>
+</div>
+</div>
+<label for="OPEN_SWITCH">三</label>
+
+<div id="SEARCH_PANEL">
+<dl>
+<dt>検索:</dt>
+<dd>
+<input type="text" id="QUERY_TITLE" placeholder="タイトル" /> 
+<input type="text" id="QUERY_PUBLISHER" placeholder="メーカー" /> 
+<input type="text" id="QUERY_STORE" placeholder="購入店舗" /> 
+<input type="text" id="QUERY_PURCHASE_DATE" placeholder="購入日" />
+</dd>
+</dl>
+
+<p>
+<input type="button" id="SEARCH" value="search" />
+ソート:
+<select id="SORT_INDEX">
+<option value="by_title">タイトル</option>
+<option value="by_publisher">メーカー</option>
+<option value="by_store">購入店舗</option>
+<option value="by_purchase_date" selected="selected">購入日</option>
+</select> 
+<select id="SORT_DIRECTION">
+<option value="next">昇順</option>
+<option value="prev" selected="selected">降順</option>
+</select></p>
+</div>
+
+<!--
+<p><input type="button" id="SHOW" value="show table" /></p>
+-->
+
+
+<div id="RESULT"></div>
+<!--
+<p><a href="./delete.html">delete DB</a></p>
+<ul id="list">
+</ul>
+-->
+
+<script>
+//indexedDB
+//document.getElementById('SHOW').addEventListener('click', showtable, false);
+document.getElementById('SEARCH').addEventListener('click', searchtable, false);
+document.getElementById('ADD').addEventListener('click', addrecord, false);
+document.getElementById('UPDATE').addEventListener('click', updaterecord, false);
+document.getElementById('UPDATE_CANCEL').addEventListener('click', cancelupdate, false);
+document.getElementById('DELETE').addEventListener('click', deleterecord, false);
+
+document.getElementById('STORE_MENU').addEventListener('mouseenter', fillmenu, false);
+document.getElementById('STORE_MENU').addEventListener('change', setstorename, false);
+
+//File
+document.getElementById('FILE').addEventListener('change', fileopen, false);
+var drop = document.getElementsByTagName('html')[0];
+drop.addEventListener('dragover', dragover, false);
+drop.addEventListener('drop', fileopen, false);
+
+//Delete
+document.getElementById('deldb').addEventListener('click', deleteDB, false);
+</script>
+
+</body>
+</html>
