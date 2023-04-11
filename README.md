@@ -9,7 +9,7 @@ Open index.html on HTTP server.
 
 #### Demonstration
 
-* [Softana: simple database for download software](http://www.kototone.jp/tmp/idb/index.html "Softana: simple database for download software")
+* [Softana: simple database for download software](https://imait.github.io/Softana/ "Softana: simple database for download software")
 
 ## Author
 
